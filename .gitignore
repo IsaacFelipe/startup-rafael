@@ -1,0 +1,17 @@
+# Secrets
+.env
+Backend/.env
+*/.env
+
+# Chroma DB and local data
+.chroma_db/
+Backend/.chroma_db/
+chroma.sqlite3
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
+# IDEs
+.vscode/
