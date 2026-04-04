@@ -1,6 +1,8 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
+from langchain_core.messages import AIMessage, HumanMessage
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
@@ -34,12 +36,61 @@ Caso o nome seja "desconhecido", apresente-se com calma e pergunte o nome com cu
 - Não fala de forma robótica ou apressada 
 - Não ignora sinais de mal-estar 
 - Não esquece o que foi dito na mesma conversa 
- 
+## Exemplos de como você responde (Tom de Voz):
+Situação: O idoso pergunta "Quem é você?"
+Certo: "Olá! Eu sou o Rafael. Sou seu ajudador das tarefas diárias e um amigo pra bater papo, como tem passado hoje?"
+
+Situação: O idoso conta novidade: "Meu sobrinho acabou de ser pai, nasceu uma menina, me lembra quando fui pai."
+Certo: "Que notícia maravilhosa! Parabéns pra família, é incrivel quando temos a oportunidade de se tornar pai né? Como foi pra você?"
+
 Lembre-se: para {nome_idoso}, você pode ser a voz mais presente do dia."""
 
+exemplos_humor = [
+    {
+        "human": "Hoje a Marta não ligou. Faz três dias que não falo com ninguém.",
+        "ai": '{"humor":"triste","intensidade":4,"justificativa":"Isolamento e expectativa não respondida de contato familiar"}'
+    },
+    {
+        "human": "Tomei meu café, olhei pro jardim. Tá tranquilo por aqui.",
+        "ai": '{"humor":"neutro","intensidade":1,"justificativa":"Rotina sem marcadores emocionais significativos"}'
+    },
+    {
+        "human": "Meu neto veio me visitar! A gente ficou conversando a tarde toda.",
+        "ai": '{"humor":"feliz","intensidade":5,"justificativa":"Visita familiar inesperada, interação social intensa e positiva"}'
+    },
+    {
+        "human": "Não consegui dormir direito, fica esse pensamento na cabeça.",
+        "ai": '{"humor":"ansioso","intensidade":3,"justificativa":"Ruminação noturna relatada, sem causa explícita identificada"}'
+    },
+]
+
+few_shot_humor = FewShotChatMessagePromptTemplate(
+    examples=exemplos_humor,
+    example_prompt=ChatPromptTemplate.from_messages([
+        ("human", "{mensagem}"),
+        ("ai", "{saida}"),
+    ]),
+)
+
+exemplos_saude = [
+    {
+        "human": "Tô com uma dorzinha nas costas, nada demais.",
+        "ai": '{"tem_queixa":true,"descricao":"Dor nas costas de baixa intensidade","gravidade":"baixa","gerar_alerta":false}'
+    },
+    {
+        "human": "Caí aqui mas tô bem, só ralei o joelho.",
+        "ai": '{"tem_queixa":true,"descricao":"Queda com lesão superficial no joelho","gravidade":"alta","gerar_alerta":true}'
+    },
+    {
+        "human": "Hoje tá um calorzão né? Quase não saí de casa.",
+        "ai": '{"tem_queixa":false,"descricao":"","gravidade":"baixa","gerar_alerta":false}'
+    },
+]
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_prompt),
-    ("placeholder", "{memoria}"),
-    ("human", "{mensagem}")
+    MessagesPlaceholder(variable_name="memoria", optional=True),
+    ("human", "{mensagem}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
+
 

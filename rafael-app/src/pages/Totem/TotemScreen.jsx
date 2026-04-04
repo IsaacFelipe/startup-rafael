@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -7,12 +7,78 @@ const STATES = [
   { id: "standby", label: "STANDBY", color: "#0439D9" },
   { id: "ouvindo", label: "OUVINDO", color: "#5086F2" },
   { id: "pensando", label: "PENSANDO", color: "#9E99BF" },
-  { id: "falando", label: "FALANDO", color: "#386273" }, // Ou outro tom verde/cyan
+  { id: "falando", label: "FALANDO", color: "#386273" },
   { id: "alerta", label: "ALERTA", color: "#A64141" },
 ];
 
+const API_URL = "http://localhost:8000";
+
 export function TotemScreen() {
   const [rafaelState, setRafaelState] = useState("standby");
+  const [resposta, setResposta] = useState("");
+  
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  // Mock de sessão
+  const idoso_id = 1;
+  const sessao_id = 1;
+
+  async function iniciarGravacao() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+      recorder.onstop = enviarAudio;
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRafaelState("ouvindo");
+    } catch (err) {
+      console.error("Erro ao acessar microfone", err);
+      alert("Precisamos de acesso ao seu microfone para conversar!");
+    }
+  }
+
+  function pararGravacao() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setRafaelState("pensando");
+    }
+  }
+
+  async function enviarAudio() {
+    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+    const form = new FormData();
+    form.append("audio", blob, "audio.webm");
+    form.append("idoso_id", idoso_id);
+    form.append("sessao_id", sessao_id);
+
+    try {
+      const res = await fetch(`${API_URL}/falar`, { method: "POST", body: form });
+      const data = await res.json();
+
+      setResposta(data.resposta);
+      
+      if (data.resposta) {
+        setRafaelState("falando");
+        const utterance = new SpeechSynthesisUtterance(data.resposta);
+        utterance.lang = "pt-BR";
+        utterance.onend = () => {
+          setRafaelState("standby");
+        };
+        speechSynthesis.speak(utterance);
+      } else {
+         setRafaelState("standby");
+      }
+    } catch (err) {
+      console.error("Erro ao enviar áudio", err);
+      setRafaelState("standby");
+    }
+  }
 
   const currentStateDef = STATES.find(s => s.id === rafaelState);
   const activeColor = currentStateDef.color;
@@ -21,22 +87,26 @@ export function TotemScreen() {
   const isListening = rafaelState === "ouvindo";
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-[#FEFDF9] relative overflow-hidden font-sans">
+    <div className="flex flex-col items-center min-h-screen bg-[#FEFDF9] relative overflow-hidden font-sans select-none">
       
-      {/* Botão Fechar no topo direito (simulando UI da imagem) */}
       <div className="absolute top-8 right-8 text-[#DDDCF2] hover:text-[#9E99BF] transition-colors z-50">
         <Link to="/">
           <X className="w-8 h-8" />
         </Link>
       </div>
 
-      {/* Espaçamento superior */}
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-6">
         
-        {/* Container Principal da Esfera */}
-        <div className="relative flex items-center justify-center w-[320px] h-[320px] mb-10">
+        {/* Esfera interativa. Agora serve de botão (Walkie-Talkie). */}
+        <div 
+          className="relative flex items-center justify-center w-[320px] h-[320px] mb-10 cursor-pointer"
+          onMouseDown={iniciarGravacao}
+          onMouseUp={pararGravacao}
+          onMouseLeave={pararGravacao} /* Se o dedo escapar, para de gravar */
+          onTouchStart={iniciarGravacao}
+          onTouchEnd={pararGravacao}
+        >
           
-          {/* Ripple 1: Escuta e Fala (Framer Motion) */}
           {(isListening || isSpeaking) && (
             <motion.div
               className="absolute w-full h-full rounded-full opacity-10"
@@ -51,7 +121,6 @@ export function TotemScreen() {
             />
           )}
 
-          {/* Ripple 2: Apenas para "Falando" */}
           {isSpeaking && (
             <motion.div
               className="absolute w-full h-full rounded-full opacity-5"
@@ -67,9 +136,8 @@ export function TotemScreen() {
             />
           )}
 
-          {/* Esfera Viva Central com Gradiente 3D (Refletindo a imagem ref) */}
           <motion.div
-            className="relative w-[280px] h-[280px] rounded-full"
+            className="relative w-[280px] h-[280px] rounded-full flex items-center justify-center text-center"
             style={{ 
               background: `radial-gradient(circle at 35% 25%, #5086F2 0%, ${activeColor} 40%, #011140 100%)`,
               boxShadow: `0 20px 40px -10px ${activeColor}40`
@@ -84,52 +152,23 @@ export function TotemScreen() {
               ease: "easeInOut",
             }}
           >
-            {/* Brilho super sutil interno */}
+            {/* Texto auxiliar dentro da esfera caso queira */}
+            <span className="text-white/60 font-medium z-10 pointer-events-none drop-shadow-md px-4">
+              {rafaelState === "standby" ? "Toque e Segure\\npara falar" : 
+               rafaelState === "ouvindo" ? "Pode falar..." : 
+               rafaelState === "pensando" ? "Pensando..." : ""}
+            </span>
             <div className="absolute inset-0 rounded-full w-full h-full bg-gradient-to-tr from-white/0 to-white/20 mix-blend-overlay"></div>
           </motion.div>
         </div>
 
-        {/* Textos Centrais (Refletindo imagem ref) */}
         <div className="text-center w-full mb-8">
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-[#352F59] mb-4">
             Estou aqui com<br/>você, <span className="text-[#0439D9]">Seu</span><br/><span className="text-[#0439D9]">João</span>.
           </h1>
-          <p className="text-[#9E99BF] font-medium text-lg px-8">
-            Pode falar comigo a qualquer<br/>momento.
+          <p className="text-[#9E99BF] font-medium text-lg px-8 min-h-[60px]">
+            {resposta ? resposta : "Pode falar comigo a qualquer momento."}
           </p>
-        </div>
-      </div>
-
-      {/* Painel Inferior de Debug/Troca de Estado (Design idêntico à imagem) */}
-      <div className="w-full flex justify-center pb-12 z-50">
-        <div className="bg-white/80 backdrop-blur-md shadow-[0_10px_40px_-10px_rgba(0,0,0,0.05)] rounded-full px-8 py-5 flex items-center gap-6 border border-white/50">
-          {STATES.map((state) => {
-            const isActive = rafaelState === state.id;
-            return (
-              <button 
-                key={state.id}
-                onClick={() => setRafaelState(state.id)}
-                className="flex flex-col items-center gap-2 transition-all"
-              >
-                {/* Bolinha do Status */}
-                <div 
-                  className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${isActive ? 'scale-110 shadow-sm' : 'opacity-40 hover:opacity-70'}`}
-                  style={{ backgroundColor: `${state.color}20` }} /* Fundo bem clarinho */
-                >
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: state.color }} 
-                  />
-                </div>
-                {/* Label do Status */}
-                <span 
-                  className={`text-[10px] font-bold tracking-widest transition-all ${isActive ? 'text-[#011140]' : 'text-[#9E99BF]'}`}
-                >
-                  {state.label}
-                </span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
